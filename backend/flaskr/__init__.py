@@ -17,14 +17,9 @@ def create_app(test_config=None):
   app = Flask(__name__)
   setup_db(app)
 
-  '''
-  @TODO: Set up CORS. Allow '*' for origins. Delete the sample route after completing the TODOs
-  '''
+
   CORS(app, resources={'/': {'origins': '*'}})
 
-  '''
-  @TODO: Use the after_request decorator to set Access-Control-Allow
-  '''
   @app.after_request
   def after_request(response):
         '''
@@ -35,56 +30,43 @@ def create_app(test_config=None):
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
         return response
-  '''
-  @TODO: 
-  Create an endpoint to handle GET requests 
-  for all available categories.
-  '''
+
   @app.route('/categories')
   def categories():
     categories = Category.query.all()
     everycat = []
     for category in categories:
-      everycat.append(category.format())
+      everycat.append(category.type)
+    if (len(everycat) == 0):
+      abort(404)
     return jsonify({
         'success': True,
         'categories': everycat
        })
 
-  '''
-  @TODO: 
-  Create an endpoint to handle GET requests for questions, 
-  including pagination (every 10 questions). 
-  This endpoint should return a list of questions, 
-  number of total questions, current category, categories. 
-  
-  TEST: At this point, when you start the application
-  you should see questions and categories generated,
-  ten questions per page and pagination at the bottom of the screen for three pages.
-  Clicking on the page numbers should update the questions. 
-  '''
   @app.route('/questions')
   def questions():
-    try:
-      questions = Question.query.all()
-      questlist = []
-      for question in questions:
-        questlist.append(question.format())
-      return jsonify({
-        "success": True,
-        "questions": paginiation(request.args.get('page',1,type=int),questlist),
-        "count": len(questlist)
-      })
-    except:
-      abort(422)
-  '''
-  @TODO: 
-  Create an endpoint to DELETE question using a question ID. 
-  
-  TEST: When you click the trash icon next to a question, the question will be removed.
-  This removal will persist in the database and when you refresh the page. 
-  '''
-  @app.route('/delete/<int:question_id>', methods = ['DELETE'])
+    categories = Category.query.all()
+    questions = Question.query.all()
+    everycat = []
+    questlist = []
+    
+    for category in categories:
+      everycat.append(category.type)
+    for question in questions:
+      questlist.append(question.format())
+    pagination1 = paginiation(request.args.get('page',1,type=int),questlist)
+    if (len(pagination1) == 0):
+      abort(404)
+
+    return jsonify({
+      "success": True,
+      "questions": pagination1,
+      'total_questions': len(questlist),
+      'categories': everycat
+    })
+
+  @app.route('/questions/<int:question_id>', methods = ['DELETE'])
   def delete(question_id):
 
       question = Question.query.filter_by(id=question_id).one_or_none()
@@ -97,73 +79,100 @@ def create_app(test_config=None):
         "deleted": question_id
         })
 
-
-
-  '''
-  @TODO: 
-  Create an endpoint to POST a new question, 
-  which will require the question and answer text, 
-  category, and difficulty score.
-
-  TEST: When you submit a question on the "Add" tab, 
-  the form will clear and the question will appear at the end of the last page
-  of the questions list in the "List" tab.  
-  '''
   @app.route('/questions', methods=['POST'])
   def post_question():
-    
-    print(request.get_json())
     body = request.get_json()
     questlist = []
     if (body.get('query')):
-      print('TRUE')
+      
       query = body.get('query')
       result = Question.query.filter(Question.question.ilike(f'%{query}%')).all()
       for question in result:
         questlist.append(question.format())
+      return jsonify({
+        "success": True,
+        "questions": paginiation(request.args.get('page',1,type=int),questlist),
+        "count": len(result)
+      })
+    else:
+      new_question = {
+        "question": body.get('question'),
+        "answer": body.get('answer'),
+        "category": body.get('category'),
+        "difficulty": body.get('difficulty'), 
+      }
+      if None in new_question.values():
+        abort(400)
+      question = Question(**new_question)
+      question.insert()
+    
+      return jsonify({
+        "success": True,
+        "question":question.format(),
+        "count":1
+      })
+
+  @app.route('/categories/<int:id>/questions')
+  def get_categories(id):
+
+  
+      id = id + 1
+      category = Category.query.filter_by(id=id).one_or_none()
+      questions = Question.query.filter_by(category=id).all()
+      questlist = []
+      if (category is None):
+        abort(400)
+      for question in questions:
+        questlist.append(question.format())
+      return jsonify({
+        "success": True,
+        "questions": paginiation(request.args.get('page',1,type=int),questlist),
+        'total_questions': len(questlist),
+        'current_category': category.type
+      })
+
+  @app.route('/quizzes', methods=['POST'])
+  def random_questions():
+    body = request.get_json()
+    category = body.get('quiz_category')
+    previous = body.get('previous_questions')
+    total = 0
+
+    if((category is None)):
+      abort(400)
+    if (category['id'] == 0):
+      questions = Question.query.all()
+      total = len(questions)
+    else:
+      questions = Question.query.filter_by(category=category['id']).all()
+      total = len(questions)
+    def get_random_question():
+        return questions[random.randrange(0, len(questions), 1)]
+
+    def check_if_used(question):
+        used = False
+        for q in previous:
+            if (q == question.id):
+                used = True
+
+        return used
+
+    question = get_random_question()
+
+    # check if used, execute until unused question found
+    while (check_if_used(question)):
+        question = get_random_question()    
+
+    
+    if (len(previous) == total):
+        return jsonify({
+            'success': True
+        })
     return jsonify({
-      "success": True,
-      "questions": paginiation(request.args.get('page',1,type=int),questlist),
-      "count": len(result)
+      'success':True,
+      'question': question.format()
     })
-  '''
-  @TODO: 
-  Create a POST endpoint to get questions based on a search term. 
-  It should return any questions for whom the search term 
-  is a substring of the question. 
 
-  TEST: Search by any phrase. The questions list will update to include 
-  only question that include that string within their question. 
-  Try using the word "title" to start. 
-  '''
-
-  '''
-  @TODO: 
-  Create a GET endpoint to get questions based on category. 
-
-  TEST: In the "List" tab / main screen, clicking on one of the 
-  categories in the left column will cause only questions of that 
-  category to be shown. 
-  '''
-
-
-  '''
-  @TODO: 
-  Create a POST endpoint to get questions to play the quiz. 
-  This endpoint should take category and previous question parameters 
-  and return a random questions within the given category, 
-  if provided, and that is not one of the previous questions. 
-
-  TEST: In the "Play" tab, after a user selects "All" or a category,
-  one question at a time is displayed, the user is allowed to answer
-  and shown whether they were correct or not. 
-  '''
-
-  '''
-  @TODO: 
-  Create error handlers for all expected errors 
-  including 404 and 422. 
-  '''
   @app.errorhandler(404)
   def not_found(error):
       return jsonify({
@@ -180,13 +189,21 @@ def create_app(test_config=None):
           "message": "unprocessable"
       }), 422
 
+  @app.errorhandler(500)
+  def unprocessable(error):
+      return jsonify({
+          "success": False,
+          "error": 500,
+          "message": "internal error"
+      }), 500
   @app.errorhandler(400)
   def bad_request(error):
       return jsonify({
           "success": False,
           "error": 400,
           "message": "bad request"
-      }), 40
+      }), 400
+
   return app
 
     
