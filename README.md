@@ -250,5 +250,5 @@ The API will return three types of errors:
 ```
 
 ## Authors
-Ziad Esam Ezat for the backend implementations
-Udacity Team for the frontend implementations
+* Ziad Esam Ezat for the backend implementations
+* Udacity Team for the frontend implementations
